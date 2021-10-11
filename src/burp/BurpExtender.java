@@ -2,9 +2,6 @@ package burp;
 
 import java.awt.*;
 import java.awt.event.MouseAdapter;
-import java.io.IOException;
-import java.net.URI;
-import java.net.URL;
 import javax.swing.*;
 import java.awt.event.MouseEvent;
 import java.awt.GridLayout;
@@ -14,6 +11,26 @@ import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+
+/**
+ * TODO List
+ * Send button number input
+ * Inspector (focus on JWT)
+ * Title formatting
+ * cancel button support
+ * Tabs
+ * Logs
+ * Ensure that all repeated sends are captured and displayed
+ * Layout usability
+ * Back and forward button (if suitable)
+ * Toggle layout
+ * Send button order toggle
+ * listener on response for empty toggle visibility
+ * Send status counter (with loading animation) using
+ * ...
+ * ...
+ * Make everything thread safe
+ */
 
 public class BurpExtender implements IContextMenuFactory, IBurpExtender, ITab, IMessageEditorController {
 
@@ -42,6 +59,7 @@ public class BurpExtender implements IContextMenuFactory, IBurpExtender, ITab, I
     // Buttons
     JButton sendSplitButton;
     JButton cancelButton;
+    JLabel sendStatusLabel;
 
     // HTTP
     private IHttpRequestResponse currentlyDisplayedItem;
@@ -88,7 +106,8 @@ public class BurpExtender implements IContextMenuFactory, IBurpExtender, ITab, I
                 responseViewer = callbacks.createMessageEditor(BurpExtender.this, false);
                 JPanel responsePane = makeMessageEditorPane(responseString, responseViewer);
                 if (showBorders) {  responsePane.setBorder(BorderFactory.createLineBorder(Color.BLACK)); }
-                responseViewer.getComponent().setVisible(false);
+                // Add ? listener for responseviewer to toggle visibility for empty
+                //responseViewer.getComponent().add
                 stdout.println("Response Pane Loaded");
 
                 // Inspector
@@ -194,55 +213,19 @@ public class BurpExtender implements IContextMenuFactory, IBurpExtender, ITab, I
      */
     private void sendRequest(int requestCount) {
 
-        stdout.println("Sending requests...");
+        SuperRepeaterSender sender = new SuperRepeaterSender(
+                callbacks,
+                this.getHttpService(),
+                this.getRequest(),
+                requestCount,
+                this.sendStatusLabel
+        );
 
-        this.cancelButton.setEnabled(true);
+        List<IHttpRequestResponse> responses = sender.send();
 
-        for (int i = 0; i < requestCount; i++) {
+        this.currentlyDisplayedItem = responses.get(requestCount-1);
 
-            // If cancel is clicked
-            if (!cancelButton.isEnabled()) {
-                stdout.println("Cancel was clicked during send loop...");
-                break;
-            }
-
-            IHttpService httpService = this.getHttpService();
-            byte[] request = this.getRequest();
-            stdout.println("Trying to send request [" + i + "]");
-
-            // Reset the response
-            // TODO make this an listener that checks for empty content
-            this.responseViewer.getComponent().setVisible(false);
-
-//            if (httpService.getProtocol() != "https") {
-//                // Display message
-//                JOptionPane.showMessageDialog(
-//                        null,
-//                        "Error: Only HTTPS is supported in the current version of Super Repeater",
-//                        "Super Repeater Error",
-//                        JOptionPane.INFORMATION_MESSAGE
-//                );
-//
-//                break;
-//            }
-
-            if (httpService != null && request != null){
-                try {
-                    stdout.println("   [" + i + "] to " + httpService.getHost());
-                    this.currentlyDisplayedItem = callbacks.makeHttpRequest(httpService, request);
-                    this.responseViewer.getComponent().setVisible(true);
-                } catch (Exception e) {
-                    stderr.println("Error: " + e.toString());
-                }
-
-                stdout.println("Request [" + i + "] sent");
-            }
-
-        }
-
-        stdout.println("All Requests sent");
-
-        this.cancelButton.setEnabled(false);
+        this.responseViewer.setMessage(this.currentlyDisplayedItem.getResponse(), false);
     }
 
     /**
@@ -276,8 +259,11 @@ public class BurpExtender implements IContextMenuFactory, IBurpExtender, ITab, I
         if (showBorders) { menuPaneLeft.setBorder(BorderFactory.createLineBorder(Color.BLUE)); }
         this.sendSplitButton = makeSendSplitButton();
         this.cancelButton = makeCancelButton();
+        this.sendStatusLabel = new JLabel("");
+        this.sendStatusLabel.setVisible(false);
         menuPaneLeft.add(sendSplitButton);
         menuPaneLeft.add(cancelButton);
+        menuPaneLeft.add(sendStatusLabel);
         stdout.println("menuPaneLeft Loaded");
 
         // Right Side of the Menu
