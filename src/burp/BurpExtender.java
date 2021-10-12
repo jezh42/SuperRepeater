@@ -1,12 +1,17 @@
 package burp;
 
 import java.awt.*;
+import java.awt.Component;
 import java.awt.event.MouseAdapter;
-import javax.swing.*;
 import java.awt.event.MouseEvent;
-import java.awt.GridLayout;
+import java.net.URL;
+import javax.swing.*;
 import javax.swing.JButton;
 import javax.swing.JPanel;
+import javax.swing.JTable;
+import javax.swing.SwingUtilities;
+import javax.swing.table.AbstractTableModel;
+import javax.swing.table.TableModel;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -14,17 +19,30 @@ import java.util.List;
 
 /**
  * TODO List
- * Send button number input
+ * Tabs
+ * main tab highlight on change
+ *
+ * Logs
+ *   default column size
+ *   params
+ *   cookies
+ *   change order
+ *
  * Inspector (focus on JWT)
+ * listener for each of the message viewers
+ *
  * Title formatting
  * cancel button support
- * Tabs
- * Logs
+ *
+ *
+ *
+ *
  * Ensure that all repeated sends are captured and displayed
  * Layout usability
  * Back and forward button (if suitable)
  * Toggle layout
- * Send button order toggle
+ * Send button order toggle (maybe not)
+ * application wide capture of logs
  * listener on response for empty toggle visibility
  * Send status counter (with loading animation) using
  * ...
@@ -32,10 +50,10 @@ import java.util.List;
  * Make everything thread safe
  */
 
-public class BurpExtender implements IContextMenuFactory, IBurpExtender, ITab, IMessageEditorController {
+public class BurpExtender extends AbstractTableModel implements IContextMenuFactory, IBurpExtender, ITab, IMessageEditorController {
 
     // Debug
-    private boolean showBorders = false;
+    private boolean showBorders = true;
 
     // Burp Extender Inits
     private final String extensionName = "Super Repeater";
@@ -47,8 +65,11 @@ public class BurpExtender implements IContextMenuFactory, IBurpExtender, ITab, I
     private PrintWriter stderr;
 
     // Pane
+    private JTabbedPane tabs;
     private JPanel contentPane;
     private JPanel menuPane;
+    private JPanel logScrollPane;
+    private final List<LogEntry> logs = new ArrayList<LogEntry>();
     private JPanel threePanelContainer;
     private IMessageEditor requestViewer;
     private IMessageEditor responseViewer;
@@ -85,12 +106,15 @@ public class BurpExtender implements IContextMenuFactory, IBurpExtender, ITab, I
             @Override
             public void run()
             {
+                tabs = new JTabbedPane();
+
                 contentPane = new JPanel(new GridBagLayout());
 
-                stdout.println("Loading Menu Pane...");
-                // Menu Buttons
+                // Menu Pane
                 makeMenuPane();
-                stdout.println("Menu Pane Loaded");
+
+                // Logs
+                makeLogPane();
 
                 // Request
                 stdout.println("Loading Request Pane...");
@@ -136,15 +160,29 @@ public class BurpExtender implements IContextMenuFactory, IBurpExtender, ITab, I
                 contentPane.add(menuPane, menuPaneConstraints);
                 stdout.println("Menu Pane added to ContentPane");
 
+                stdout.println("Adding Log Scroll Pane to ContentPane...");
+                GridBagConstraints logScrollPaneConstraints = new GridBagConstraints();
+                logScrollPaneConstraints.fill = GridBagConstraints.BOTH;
+                logScrollPaneConstraints.weightx = 1.0;
+                logScrollPaneConstraints.weighty = 0.2;
+                logScrollPaneConstraints.gridx = 0;
+                logScrollPaneConstraints.gridy = 1;
+                contentPane.add(logScrollPane, logScrollPaneConstraints);
+                stdout.println("Log Scroll Pane added to ContentPane");
+
                 stdout.println("Adding ThreePanelContainer to ContentPane...");
                 GridBagConstraints threePanelConstraints = new GridBagConstraints();
                 threePanelConstraints.fill = GridBagConstraints.BOTH;
                 threePanelConstraints.weightx = 1.0;
                 threePanelConstraints.weighty = 1.0;
                 threePanelConstraints.gridx = 0;
-                threePanelConstraints.gridy = 1;
+                threePanelConstraints.gridy = 2;
                 contentPane.add(threePanelContainer, threePanelConstraints);
                 stdout.println("ThreePanelContainer added to ContentPane");
+
+                tabs.addTab("1", contentPane);
+
+                callbacks.customizeUiComponent(tabs);
 
                 // Add new tab to Burp
                 stdout.println("Adding SuiteTab to BurpSuite...");
@@ -182,9 +220,33 @@ public class BurpExtender implements IContextMenuFactory, IBurpExtender, ITab, I
         });
         sendPopupMenu.add(sendMenuSendTwentyTimes);
 
+        // Send 20x
+        JMenuItem sendMenuSendCustom = new JMenuItem("Send custom amount");
+        sendMenuSendCustom.addMouseListener(new MouseAdapter() {
+            public void mousePressed(MouseEvent e) {
+
+                // Make popup with input
+                String input = JOptionPane.showInputDialog(
+                        null,
+                        "Enter a number for how many requests you want to make (1-10,000)"
+                );
+
+                int customAmount = Integer.parseInt(input);
+
+                if (customAmount > 1 && customAmount < 10000) {
+                    stdout.println("Sending custom amount" + customAmount);
+                    sendRequest(customAmount);
+                } else {
+                    stdout.println("Error sending");
+                }
+
+            }
+        });
+        sendPopupMenu.add(sendMenuSendCustom);
+
 
         // Create the button and the conditional mouse event listener
-        JButton sendSplitButton = new JButton("Send | *");
+        JButton sendSplitButton = new JButton("Send │ ▼");
         sendSplitButton.addMouseListener(new MouseAdapter() {
             public void mousePressed(MouseEvent e) {
                 int mouseX = e.getX();
@@ -213,6 +275,7 @@ public class BurpExtender implements IContextMenuFactory, IBurpExtender, ITab, I
      */
     private void sendRequest(int requestCount) {
 
+        // Make the sender
         SuperRepeaterSender sender = new SuperRepeaterSender(
                 callbacks,
                 this.getHttpService(),
@@ -221,10 +284,33 @@ public class BurpExtender implements IContextMenuFactory, IBurpExtender, ITab, I
                 this.sendStatusLabel
         );
 
-        List<IHttpRequestResponse> responses = sender.send();
+        // Send the requests
+        List<IHttpRequestResponse> requestResponses = sender.send();
 
-        this.currentlyDisplayedItem = responses.get(requestCount-1);
+        // Process the responses into the logs
+        for (IHttpRequestResponse requestResponse : requestResponses) {
 
+            //synchronized (logs) {
+                int row = logs.size();
+                logs.add(new LogEntry(
+                    callbacks.saveBuffersToTempFiles(requestResponse),
+                    helpers.analyzeRequest(requestResponse).getMethod(),
+                    helpers.analyzeRequest(requestResponse).getUrl(),
+                    helpers.analyzeResponse(requestResponse.getResponse()).getStatusCode(),
+                    requestResponse.getResponse().length
+                ));
+
+                stdout.println("################################################");
+                stdout.println("Length: " + requestResponse.getResponse().length);
+                stdout.println("Headers: " + helpers.analyzeResponse(requestResponse.getResponse()).getHeaders());
+                stdout.println("################################################");
+
+                fireTableRowsInserted(row, row);
+            //}
+        }
+
+        // Display the last response
+        this.currentlyDisplayedItem = requestResponses.get(requestCount-1);
         this.responseViewer.setMessage(this.currentlyDisplayedItem.getResponse(), false);
     }
 
@@ -308,6 +394,39 @@ public class BurpExtender implements IContextMenuFactory, IBurpExtender, ITab, I
 
     /**
      *
+     */
+    private void makeLogPane() {
+
+        stdout.println("Loading Log viewer...");
+
+        LogTable logTable = new LogTable(BurpExtender.this);
+
+        // Set the Column Widths
+        // TODO: fix
+        logTable.getColumn("#").setWidth(1);
+        logTable.getColumn("Method").setWidth(2);
+        logTable.getColumn("URL").setWidth(5);
+        logTable.getColumn("Status").setWidth(3);
+        logTable.getColumn("Length").setWidth(3);
+
+        logScrollPane = new JPanel(new GridLayout(1,1));
+
+        JScrollPane logScrollView = new JScrollPane(logTable);
+        logScrollPane.add(logScrollView);
+        logScrollPane.setMaximumSize(new Dimension(Integer.MAX_VALUE, 3));
+
+        if (showBorders) { logTable.setBorder(BorderFactory.createLineBorder(Color.CYAN)); }
+        if (showBorders) { logScrollView.setBorder(BorderFactory.createLineBorder(Color.MAGENTA)); }
+        if (showBorders) { logScrollPane.setBorder(BorderFactory.createLineBorder(Color.ORANGE)); }
+
+        callbacks.customizeUiComponent(logTable);
+        callbacks.customizeUiComponent(logScrollPane);
+
+        stdout.println("Log Viewer Loaded");
+    }
+
+    /**
+     *
      * @param labelString
      * @param messageEditor
      * @return
@@ -351,7 +470,7 @@ public class BurpExtender implements IContextMenuFactory, IBurpExtender, ITab, I
 
     @Override
     public Component getUiComponent() {
-        return contentPane;
+        return tabs;
     }
 
     @Override
@@ -489,5 +608,130 @@ public class BurpExtender implements IContextMenuFactory, IBurpExtender, ITab, I
         }
 
         return contextMenuList;
+    }
+
+    /**
+     *
+     */
+    private class LogTable extends JTable {
+
+        public LogTable(TableModel tableModel) {
+            super(tableModel);
+        }
+
+        @Override
+        public void changeSelection(int row, int col, boolean toggle, boolean extend) {
+
+            LogEntry log = logs.get(row);
+            requestViewer.setMessage(log.requestResponse.getRequest(), true);
+            responseViewer.setMessage(log.requestResponse.getResponse(), false);
+            currentlyDisplayedItem = log.requestResponse;
+
+            super.changeSelection(row, col, toggle, extend);
+        }
+    }
+
+    /**
+     *
+     */
+    private static class LogEntry {
+
+        final int length;
+        final String method;
+        final IHttpRequestResponse requestResponse;
+        final int status;
+        final URL url;
+
+        LogEntry(
+                IHttpRequestResponsePersisted requestResponse,
+                String method,
+                URL url,
+                int status,
+                int length
+        ) {
+            this.requestResponse = requestResponse;
+            this.method = method;
+            this.url = url;
+            this.status = status;
+            this.length = length;
+        }
+    }
+
+    /**
+     *
+     * @return
+     */
+    @Override
+    public int getRowCount() {
+        return logs.size();
+    }
+
+    /**
+     *
+     * @return
+     */
+    @Override
+    public int getColumnCount() {
+        return 5;
+    }
+
+    /**
+     *
+     * @param columnIndex
+     * @return
+     */
+    @Override
+    public String getColumnName(int columnIndex) {
+        switch (columnIndex) {
+            case 0:
+                return "#";
+            case 1:
+                return "Method";
+            case 2:
+                return "URL";
+            case 3:
+                return "Status";
+            case 4:
+                return "Length";
+            default:
+                return "";
+        }
+    }
+
+    /**
+     *
+     * @param columnIndex
+     * @return
+     */
+    @Override
+    public Class<?> getColumnClass(int columnIndex){
+        return String.class;
+    }
+
+    /**
+     *
+     * @param rowIndex
+     * @param columnIndex
+     * @return
+     */
+    @Override
+    public Object getValueAt(int rowIndex, int columnIndex) {
+
+        LogEntry log = logs.get(rowIndex);
+
+        switch (columnIndex) {
+            case 0: // #
+                return rowIndex;
+            case 1: // Method
+                return log.method;
+            case 2: // URL
+                return log.url.toString();
+            case 3: // Status
+                return Integer.toString(log.status);
+            case 4: // Length
+                return Integer.toString(log.length);
+            default:
+                return "";
+        }
     }
 }
