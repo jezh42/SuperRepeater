@@ -40,7 +40,6 @@ import java.util.List;
  *
  *
  *
- * Ensure that all repeated sends are captured and displayed
  * Layout usability
  * Back and forward button (if suitable)
  * Toggle layout
@@ -56,7 +55,7 @@ import java.util.List;
 public class BurpExtender extends AbstractTableModel implements IContextMenuFactory, IBurpExtender, ITab, IMessageEditorController {
 
     // Debug
-    private boolean showBorders = true;
+    private boolean showBorders = false;
 
     // Burp Extender Inits
     private final String extensionName = "Super Repeater";
@@ -300,6 +299,7 @@ public class BurpExtender extends AbstractTableModel implements IContextMenuFact
                     helpers.analyzeRequest(requestResponse).getMethod(),
                     helpers.analyzeRequest(requestResponse).getUrl(),
                     helpers.analyzeResponse(requestResponse.getResponse()).getStatusCode(),
+                    requestResponse.getRequest().length,
                     requestResponse.getResponse().length
                 ));
 
@@ -410,7 +410,8 @@ public class BurpExtender extends AbstractTableModel implements IContextMenuFact
         logTable.getColumn("Method").setWidth(2);
         logTable.getColumn("URL").setWidth(5);
         logTable.getColumn("Status").setWidth(3);
-        logTable.getColumn("Length").setWidth(3);
+        // logTable.getColumn("Request Length").setWidth(3);
+        // logTable.getColumn("Response Length").setWidth(3);
 
         logScrollPane = new JPanel(new GridLayout(1,1));
 
@@ -775,8 +776,9 @@ public class BurpExtender extends AbstractTableModel implements IContextMenuFact
      */
     private static class LogEntry {
 
-        final int length;
         final String method;
+        final int reqLength;
+        final int resLength;
         final IHttpRequestResponse requestResponse;
         final int status;
         final URL url;
@@ -786,13 +788,15 @@ public class BurpExtender extends AbstractTableModel implements IContextMenuFact
                 String method,
                 URL url,
                 int status,
-                int length
+                int reqLength,
+                int resLength
         ) {
             this.requestResponse = requestResponse;
             this.method = method;
             this.url = url;
             this.status = status;
-            this.length = length;
+            this.reqLength = reqLength;
+            this.resLength = resLength;
         }
     }
 
@@ -831,7 +835,9 @@ public class BurpExtender extends AbstractTableModel implements IContextMenuFact
             case 3:
                 return "Status";
             case 4:
-                return "Length";
+                return "Request Length";
+            case 5:
+                return "Response Length";
             default:
                 return "";
         }
@@ -867,8 +873,10 @@ public class BurpExtender extends AbstractTableModel implements IContextMenuFact
                 return log.url.toString();
             case 3: // Status
                 return Integer.toString(log.status);
-            case 4: // Length
-                return Integer.toString(log.length);
+            case 4: // Request Length
+                return Integer.toString(log.reqLength);
+            case 5: // Response Length
+                return Integer.toString(log.resLength);
             default:
                 return "";
         }
