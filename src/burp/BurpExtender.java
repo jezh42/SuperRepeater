@@ -10,7 +10,9 @@ import javax.swing.JButton;
 import javax.swing.JPanel;
 import javax.swing.JTable;
 import javax.swing.SwingUtilities;
+import javax.swing.border.MatteBorder;
 import javax.swing.table.AbstractTableModel;
+import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableModel;
 import java.io.PrintWriter;
 import java.util.ArrayList;
@@ -24,9 +26,10 @@ import java.util.List;
  *
  * Logs
  *   default column size
- *   params
- *   cookies
- *   change order
+ *   add columns
+ *      params
+ *      cookies
+ *      change order
  *
  * Inspector (focus on JWT)
  * listener for each of the message viewers
@@ -135,11 +138,11 @@ public class BurpExtender extends AbstractTableModel implements IContextMenuFact
                 stdout.println("Response Pane Loaded");
 
                 // Inspector
-                stdout.println("Loading Inspector Pane...");
-                inspectorViewer = new JPanel();
-                JLabel inspectorLabel = new JLabel("Inspector");
-                inspectorViewer.add(inspectorLabel);
-                stdout.println("Inspector Pane Loaded");
+                try {
+                    makeInspectorPane();
+                } catch (Exception e) {
+                    stderr.println(e);
+                }
 
                 stdout.println("Loading ThreePanelContainer Pane...");
                 threePanelContainer = new JPanel(new GridLayout(1,3));
@@ -279,7 +282,7 @@ public class BurpExtender extends AbstractTableModel implements IContextMenuFact
         SuperRepeaterSender sender = new SuperRepeaterSender(
                 callbacks,
                 this.getHttpService(),
-                this.getRequest(),
+                this.requestViewer.getMessage(),
                 requestCount,
                 this.sendStatusLabel
         );
@@ -437,7 +440,7 @@ public class BurpExtender extends AbstractTableModel implements IContextMenuFact
         JLabel label = new JLabel(labelString);
         GridBagConstraints labelConstraints = new GridBagConstraints();
         labelConstraints.fill = GridBagConstraints.HORIZONTAL;
-        labelConstraints.anchor = GridBagConstraints.PAGE_START;
+        labelConstraints.anchor = GridBagConstraints.NORTH;
         labelConstraints.ipady = 20;
         labelConstraints.weightx = 1.0;
         labelConstraints.weighty = 0;
@@ -461,6 +464,142 @@ public class BurpExtender extends AbstractTableModel implements IContextMenuFact
         messageEditorPane.add(messageEditorContainer, messageEditorConstraints);
 
         return messageEditorPane;
+    }
+
+    /**
+     *
+     */
+    private void makeInspectorPane() {
+
+        stdout.println("Loading Inspector Pane...");
+        inspectorViewer = new JPanel(new GridBagLayout());
+
+        JLabel inspectorLabel = new JLabel("Inspector");
+        inspectorLabel.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Color.LIGHT_GRAY));
+        GridBagConstraints inspectorEditorConstraints = new GridBagConstraints();
+        inspectorEditorConstraints.fill = GridBagConstraints.HORIZONTAL;
+        inspectorEditorConstraints.anchor = GridBagConstraints.NORTH;
+        inspectorEditorConstraints.insets = new Insets(0,5,0,5);
+        inspectorEditorConstraints.ipady = 5;
+        inspectorEditorConstraints.weightx = 1.0;
+        inspectorEditorConstraints.weighty = 0;
+        inspectorEditorConstraints.gridx = 0;
+        inspectorEditorConstraints.gridy = 0;
+        inspectorViewer.add(inspectorLabel, inspectorEditorConstraints);
+
+        // Selection
+        // if selected
+        //inspectorEditorConstraints.anchor = 0;
+
+
+        // Request Attributes
+
+        // Query Parameters
+
+        // Body Parameters
+
+        // Request Cookies
+
+        // Request Headers
+
+        // Response Headers
+
+        // JWT Editor
+        JPanel jwtEditorPane = makeJwtEditor();
+        jwtEditorPane.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Color.LIGHT_GRAY));
+        inspectorEditorConstraints.gridy = 1;
+        inspectorViewer.add(jwtEditorPane, inspectorEditorConstraints);
+
+        JPanel inspectorFooter = new JPanel();
+        inspectorFooter.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Color.LIGHT_GRAY));
+        inspectorEditorConstraints.fill = GridBagConstraints.BOTH;
+        inspectorEditorConstraints.gridy = 1;
+        inspectorEditorConstraints.weighty = 1.0;
+        inspectorEditorConstraints.ipady = 50;
+        inspectorViewer.add(inspectorFooter, inspectorEditorConstraints);
+
+
+        stdout.println("Inspector Pane Loaded");
+
+    }
+
+    /**
+     *
+     * @return Panel containing the JWT Editor
+     */
+    private JPanel makeJwtEditor() {
+
+        JPanel jwtEditorPane = new JPanel(new GridBagLayout());
+
+        JLabel jwtEditorLabel = new JLabel("JWT Editor");
+        GridBagConstraints jwtEditorConstraints = new GridBagConstraints();
+        jwtEditorConstraints.fill = GridBagConstraints.HORIZONTAL;
+        jwtEditorConstraints.anchor = GridBagConstraints.NORTH;
+        jwtEditorConstraints.ipady = 5;
+        jwtEditorConstraints.weightx = 1.0;
+        jwtEditorConstraints.weighty = 0;
+        jwtEditorConstraints.gridx = 0;
+        jwtEditorConstraints.gridy = 0;
+        jwtEditorPane.add(jwtEditorLabel, jwtEditorConstraints);
+
+        JLabel jwtHeaderLabel = new JLabel("JWT Header");
+        jwtEditorConstraints.insets = new Insets(0,5,0,5);
+        jwtEditorConstraints.ipady = 4;
+        jwtEditorConstraints.gridy = 1;
+        jwtEditorPane.add(jwtHeaderLabel, jwtEditorConstraints);
+
+        String[] jwtHeaderColumns = {"Name", "Value"};
+        DefaultTableModel jwtHeaderTableModel = new DefaultTableModel(2, jwtHeaderColumns.length) ;
+        jwtHeaderTableModel.setColumnIdentifiers(jwtHeaderColumns);
+        JTable jwtHeaderTable = new JTable(jwtHeaderTableModel);
+        //jwtHeaderTable.setBounds(5,5,20,20);
+        jwtEditorConstraints.fill = GridBagConstraints.BOTH;
+        jwtEditorConstraints.ipady = 45;
+        jwtEditorConstraints.gridy = 2;
+        JScrollPane jwtHeaderScrollPane = new JScrollPane(jwtHeaderTable);
+        jwtEditorPane.add(jwtHeaderScrollPane, jwtEditorConstraints);
+
+        JLabel jwtDataLabel = new JLabel("JWT Data");
+        jwtEditorConstraints.fill = GridBagConstraints.HORIZONTAL;
+        jwtEditorConstraints.ipady = 4;
+        jwtEditorConstraints.gridy = 3;
+        jwtEditorPane.add(jwtDataLabel, jwtEditorConstraints);
+
+        String[] jwtDataColumns = {"Name", "Value"};
+        DefaultTableModel jwtDataTableModel = new DefaultTableModel(5, jwtDataColumns.length) ;
+        jwtDataTableModel.setColumnIdentifiers(jwtDataColumns);
+        JTable jwtDataTable = new JTable(jwtDataTableModel);
+        jwtEditorConstraints.ipady = 100;
+        jwtEditorConstraints.fill = GridBagConstraints.BOTH;
+        jwtEditorConstraints.gridy = 4;
+        JScrollPane jwtDataScrollPane = new JScrollPane(jwtDataTable);
+        jwtEditorPane.add(jwtDataScrollPane, jwtEditorConstraints);
+
+        JLabel jwtSignatureLabel = new JLabel("JWT Signature");
+        jwtEditorConstraints.fill = GridBagConstraints.HORIZONTAL;
+        jwtEditorConstraints.ipady = 4;
+        jwtEditorConstraints.gridy = 5;
+        jwtEditorPane.add(jwtSignatureLabel, jwtEditorConstraints);
+
+        String[] jwtSignatureColumns = {"Name", "Value"};
+        DefaultTableModel jwtSignatureTableModel = new DefaultTableModel(2, jwtSignatureColumns.length) ;
+        jwtSignatureTableModel.setColumnIdentifiers(jwtSignatureColumns);
+        JTable jwtSignatureTable = new JTable(jwtSignatureTableModel);
+        jwtEditorConstraints.ipady = 45;
+        jwtEditorConstraints.fill = GridBagConstraints.BOTH;
+        jwtEditorConstraints.gridy = 6;
+        JScrollPane jwtSignatureScrollPane = new JScrollPane(jwtSignatureTable);
+        jwtEditorPane.add(jwtSignatureScrollPane, jwtEditorConstraints);
+
+
+        return jwtEditorPane;
+    }
+
+    /**
+     *
+     */
+    private void reloadInspector() {
+
     }
 
     @Override
